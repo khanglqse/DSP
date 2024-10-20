@@ -12,24 +12,38 @@ import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 from sklearn.svm import SVC
 
-# Đường dẫn đến file metadata và thư mục audio
 metadata_path = './meta/metadata.csv'
 audio_folder = './audio'
 
-# Đọc file metadata
 metadata = pd.read_csv(metadata_path)
 
-# Hàm trích xuất đặc trưng âm thanh từ các file audio
 def extract_features(file_name):
     try:
         audio_data, sample_rate = librosa.load(file_name, res_type='kaiser_fast')
         mfccs = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
         mfccs_scaled = np.mean(mfccs.T, axis=0)
+        
         chroma = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate)
         chroma_scaled = np.mean(chroma.T, axis=0)
+        
         spectral_contrast = librosa.feature.spectral_contrast(y=audio_data, sr=sample_rate)
         spectral_contrast_scaled = np.mean(spectral_contrast.T, axis=0)
-        return np.hstack([mfccs_scaled, chroma_scaled, spectral_contrast_scaled])
+
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(y=audio_data)
+        zero_crossing_rate_scaled = np.mean(zero_crossing_rate.T, axis=0)
+        
+        spectral_centroid = librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate)
+        spectral_centroid_scaled = np.mean(spectral_centroid.T, axis=0)
+
+        features = np.hstack([
+            mfccs_scaled,
+            chroma_scaled,
+            spectral_contrast_scaled,
+            zero_crossing_rate_scaled,
+            spectral_centroid_scaled
+        ])
+        
+        return features
     except Exception as e:
         print(f"Error encountered while parsing file: {file_name}, error: {e}")
         return None
@@ -44,7 +58,6 @@ def pre_processing():
     le = LabelEncoder()
     y = le.fit_transform(y)
 
-    # Handle class imbalance
     ros = RandomOverSampler(random_state=42)
     X, y = ros.fit_resample(X, y)
 
@@ -90,24 +103,22 @@ def SVM():
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # Tuning Hyperparameters for SVM
     model = SVC(random_state=42)
     param_grid = {
-        'C': [0.1, 1, 10],
-        'kernel': ['linear', 'rbf'],
+        'C': [0.1, 1, 10, 100],
+        'kernel': ['linear', 'rbf', 'poly'],
         'gamma': ['scale', 'auto']
     }
 
-    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1_macro', n_jobs=-1)
+    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
     grid_search.fit(X_train, y_train)
 
-    best_model = grid_search.best_estimator_
-    y_pred = best_model.predict(X_test)
+    print("Best Hyperparameters: ", grid_search.best_params_)
+
+    y_pred = grid_search.predict(X_test)
 
     print(f"SVM Accuracy: {accuracy_score(y_test, y_pred)}")
     print(classification_report(y_test, y_pred, target_names=le.classes_))
-    show_confusion_matrix(y_test, y_pred, le.classes_, normalize=True)
+    show_confusion_matrix(y_test, y_pred, le.classes_)
 
-# Uncomment the model you want to run
-# random_forest()
 SVM()
