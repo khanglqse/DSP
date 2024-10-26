@@ -11,6 +11,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 from sklearn.svm import SVC
+from joblib import dump, load
+import utilities
 
 metadata_path = './meta/metadata.csv'
 audio_folder = './audio'
@@ -57,10 +59,13 @@ def pre_processing():
     y = np.array(features_df['class_label'])
     le = LabelEncoder()
     y = le.fit_transform(y)
+   
 
     ros = RandomOverSampler(random_state=42)
     X, y = ros.fit_resample(X, y)
-
+    dump(X, 'X_features_init.joblib')
+    dump(y, 'y_labels_init.joblib')
+    dump(le, 'label_encoder_init.joblib')
     return X, y, le
 
 def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
@@ -73,35 +78,65 @@ def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
     plt.show()
 
 def random_forest():
-    X, y, le = pre_processing()
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # X, y, le = pre_processing()
+    X, y, le = utilities.load_preprocessed_data()
+    
+    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
+    
+    # Scaling
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
-
+    
+    # Define the model and hyperparameters for tuning
     model = RandomForestClassifier(random_state=42)
     param_grid = {
         'n_estimators': [50, 100, 200],
         'max_depth': [None, 10, 20, 30],
         'min_samples_split': [2, 5, 10]
     }
-
+    
+    # Step 3: Tune and train the model with the validation set using GridSearchCV
     grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1_macro', n_jobs=-1)
     grid_search.fit(X_train, y_train)
-
+    
+    # Select the best model
     best_model = grid_search.best_estimator_
-    y_pred = best_model.predict(X_test)
 
-    print(f"Random Forest Accuracy: {accuracy_score(y_test, y_pred)}")
-    print(classification_report(y_test, y_pred, target_names=le.classes_))
-    show_confusion_matrix(y_test, y_pred, le.classes_, normalize=True)
+    # Step 4: Evaluate on the validation set to check performance
+    y_val_pred = best_model.predict(X_val)
+    print("Validation Set Evaluation")
+    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+    
+    # Step 5: Final evaluation on the test set
+    y_test_pred = best_model.predict(X_test)
+    print("Test Set Evaluation")
+    print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
+    print(classification_report(y_test, y_test_pred, target_names=le.classes_))
+    show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
+
 
 def SVM():
-    X, y, le = pre_processing()
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # X, y, le = pre_processing()
+    X, y, le = utilities.load_preprocessed_data()
+    
+    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
+    
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
+    X_val = scaler.transform(X_val)
 
     model = SVC(random_state=42)
     param_grid = {
@@ -112,13 +147,23 @@ def SVM():
 
     grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
     grid_search.fit(X_train, y_train)
-
+    best_model = grid_search.best_estimator_
     print("Best Hyperparameters: ", grid_search.best_params_)
 
-    y_pred = grid_search.predict(X_test)
+    y_val_pred = best_model.predict(X_val) 
 
-    print(f"SVM Accuracy: {accuracy_score(y_test, y_pred)}")
-    print(classification_report(y_test, y_pred, target_names=le.classes_))
-    show_confusion_matrix(y_test, y_pred, le.classes_)
+    print("Validation Set Evaluation")
+    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+    
+    # Step 5: Final evaluation on the test set
+    # y_test_pred = best_model.predict(X_test)
+    # print("Test Set Evaluation")
+    # print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
+    # print(classification_report(y_test, y_test_pred, target_names=le.classes_))
+    # show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
 
+# pre_processing()
 SVM()
+# random_forest()
