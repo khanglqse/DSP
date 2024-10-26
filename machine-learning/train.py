@@ -15,9 +15,12 @@ from joblib import dump, load
 import utilities
 
 metadata_path = './meta/metadata.csv'
+augmented_metadata_path = './meta/augmented_metadata.csv'
 audio_folder = './audio'
+augmented_audio_folder = './augmented_audio'
 
 metadata = pd.read_csv(metadata_path)
+augmented_metadata = pd.read_csv(augmented_metadata_path)
 
 def extract_features(file_name):
     try:
@@ -50,7 +53,7 @@ def extract_features(file_name):
         print(f"Error encountered while parsing file: {file_name}, error: {e}")
         return None
 
-def pre_processing():
+def pre_processing(audio_folder = audio_folder, metadata = metadata):
     features = Parallel(n_jobs=-1)(delayed(extract_features)(os.path.join(audio_folder, row['filename'])) for _, row in metadata.iterrows())
     features_df = pd.DataFrame(features, columns=[f'feature_{i}' for i in range(features[0].shape[0])])
     features_df['class_label'] = metadata['category']
@@ -63,18 +66,27 @@ def pre_processing():
 
     ros = RandomOverSampler(random_state=42)
     X, y = ros.fit_resample(X, y)
-    dump(X, 'X_features_init.joblib')
-    dump(y, 'y_labels_init.joblib')
-    dump(le, 'label_encoder_init.joblib')
     return X, y, le
+
 
 def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
     conf_matrix = confusion_matrix(y_true, y_pred, normalize='true' if normalize else None)
-    plt.figure(figsize=(10, 7))
-    sns.heatmap(conf_matrix, annot=True, fmt='.2f' if normalize else 'd', cmap='Blues', xticklabels=class_names, yticklabels=class_names)
-    plt.ylabel('Actual')
-    plt.xlabel('Predicted')
-    plt.title('Confusion Matrix')
+    
+    plt.figure(figsize=(12, 10))  # Increase figure size
+    sns.heatmap(conf_matrix, annot=True, fmt='.2f' if normalize else 'd', cmap='Blues', 
+                xticklabels=class_names, yticklabels=class_names, 
+                cbar_kws={'label': 'Frequency'})  # Add color bar label
+    
+    plt.ylabel('Actual', fontsize=8)  # Increase font size for labels
+    plt.xlabel('Predicted', fontsize=8)  # Increase font size for labels
+    plt.title('Confusion Matrix', fontsize=8)  # Increase font size for title
+    plt.xticks(fontsize=8)  # Increase font size for x-axis ticks
+    plt.yticks(fontsize=8)  # Increase font size for y-axis ticks
+    
+    # Adjust annotation font size
+    for text in plt.gca().texts:
+        text.set_fontsize(8)  # Change annotation font size
+
     plt.show()
 
 def random_forest():
@@ -124,14 +136,19 @@ def random_forest():
 
 
 def SVM():
-    # X, y, le = pre_processing()
+    # X, y, le = utilities.load_preprocessed_data()
     X, y, le = utilities.load_preprocessed_data()
+    X_aug, y_aug, y_le = pre_processing(augmented_audio_folder, augmented_metadata)
+    X_combined = np.concatenate((X, X_aug), axis=0)
+    y_combined = np.concatenate((y, y_aug), axis=0)
+    ros = RandomOverSampler(random_state=42)
+    X_resampled, y_resampled = ros.fit_resample(X_combined, y_combined)
     
     # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
-    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
     # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
-    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2, random_state=42)
     
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
@@ -165,5 +182,37 @@ def SVM():
     # show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
 
 # pre_processing()
+def SVM1():
+    # Load preprocessed data
+    X, y, le = utilities.load_preprocessed_data()
+    
+    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
+    X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2, random_state=42)
+    
+    # Standardize the features
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+
+    # Initialize SVM model with manually set hyperparameters
+    model = SVC(C=1, kernel='rbf', gamma='scale', random_state=42)  # Adjust these values as needed
+
+    # Fit the model
+    model.fit(X_train, y_train)
+
+    # Predict on validation set
+    y_val_pred = model.predict(X_val)
+
+    # Evaluate on the validation set
+    print("Validation Set Evaluation")
+    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+
 SVM()
 # random_forest()
+# pre_processing()
