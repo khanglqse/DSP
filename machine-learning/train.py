@@ -53,20 +53,36 @@ def extract_features(file_name):
         print(f"Error encountered while parsing file: {file_name}, error: {e}")
         return None
 
-def pre_processing(audio_folder = audio_folder, metadata = metadata):
+def pre_processing():
     features = Parallel(n_jobs=-1)(delayed(extract_features)(os.path.join(audio_folder, row['filename'])) for _, row in metadata.iterrows())
+    augmented_features = Parallel(n_jobs=-1)(delayed(extract_features)(os.path.join(augmented_audio_folder, row['filename'])) for _, row in augmented_metadata.iterrows())
+
+    # Tạo DataFrame cho dữ liệu gốc
     features_df = pd.DataFrame(features, columns=[f'feature_{i}' for i in range(features[0].shape[0])])
     features_df['class_label'] = metadata['category']
     features_df = features_df.dropna()
-    X = np.array(features_df.iloc[:, :-1])
-    y = np.array(features_df['class_label'])
+
+    # Tạo DataFrame cho dữ liệu tăng cường
+    augmented_features_df = pd.DataFrame(augmented_features, columns=[f'feature_{i}' for i in range(augmented_features[0].shape[0])])
+    augmented_features_df['class_label'] = augmented_metadata['category']  # Sử dụng category từ augmented_metadata
+    augmented_features_df = augmented_features_df.dropna()
+
+    # Kết hợp hai DataFrame
+    combined_df = pd.concat([features_df, augmented_features_df], ignore_index=True)
+
+    # Chia dữ liệu thành X và y
+    X = np.array(combined_df.iloc[:, :-1])
+    y = np.array(combined_df['class_label'])
+
+    # Chuyển đổi nhãn
     le = LabelEncoder()
     y = le.fit_transform(y)
-   
 
-    ros = RandomOverSampler(random_state=42)
-    X, y = ros.fit_resample(X, y)
+    dump(X, 'X_final.joblib')
+    dump(y, 'y_final.joblib')
+    dump(le, 'label_encoder.joblib')
     return X, y, le
+  
 
 
 def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
@@ -88,6 +104,20 @@ def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
         text.set_fontsize(8)  # Change annotation font size
 
     plt.show()
+def custom_resampling(X, y, le):
+    # Lấy chỉ số của các lớp
+    airplane_index = le.transform(['airplane'])[0]
+    brushing_teeth_index = le.transform(['brushing_teeth'])[0]
+    
+    # Định nghĩa chiến lược lấy mẫu với chỉ số lớp
+    # sampling_strategy = {
+    #     airplane_index: int(1.1 * sum(y == airplane_index)),
+    #     brushing_teeth_index: int(1.1 * sum(y == brushing_teeth_index))
+    # }
+    
+    ros = RandomOverSampler(random_state=42)
+    X_resampled, y_resampled = ros.fit_resample(X, y)
+    return X_resampled, y_resampled
 
 def random_forest():
     # X, y, le = pre_processing()
@@ -136,14 +166,12 @@ def random_forest():
 
 
 def SVM():
-    # X, y, le = utilities.load_preprocessed_data()
-    X, y, le = utilities.load_preprocessed_data()
-    X_aug, y_aug, y_le = pre_processing(augmented_audio_folder, augmented_metadata)
-    X_combined = np.concatenate((X, X_aug), axis=0)
-    y_combined = np.concatenate((y, y_aug), axis=0)
-    ros = RandomOverSampler(random_state=42)
-    X_resampled, y_resampled = ros.fit_resample(X_combined, y_combined)
-    
+    X, y, le = utilities.load_preprocessed_final_data()
+
+  
+    X_resampled, y_resampled = custom_resampling(X, y, le)
+    # ros = RandomOverSampler(random_state=42)
+    # X_resampled, y_resampled = ros.fit_resample(X_combined, y_combined)
     # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
     X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
@@ -157,7 +185,7 @@ def SVM():
 
     model = SVC(random_state=42)
     param_grid = {
-        'C': [0.1, 1, 10, 100],
+        'C': [0.1, 1, 10, 100, 1000],
         'kernel': ['linear', 'rbf', 'poly'],
         'gamma': ['scale', 'auto']
     }
@@ -169,17 +197,17 @@ def SVM():
 
     y_val_pred = best_model.predict(X_val) 
 
-    print("Validation Set Evaluation")
-    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
-    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
-    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+    # print("Validation Set Evaluation")
+    # print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    # print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    # show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
     
     # Step 5: Final evaluation on the test set
-    # y_test_pred = best_model.predict(X_test)
-    # print("Test Set Evaluation")
-    # print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
-    # print(classification_report(y_test, y_test_pred, target_names=le.classes_))
-    # show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
+    y_test_pred = best_model.predict(X_test)
+    print("Test Set Evaluation")
+    print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
+    print(classification_report(y_test, y_test_pred, target_names=le.classes_))
+    show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
 
 # pre_processing()
 def SVM1():
@@ -212,6 +240,7 @@ def SVM1():
     print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
     print(classification_report(y_val, y_val_pred, target_names=le.classes_))
     show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+
 
 SVM()
 # random_forest()

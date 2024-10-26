@@ -64,7 +64,7 @@ def apply_augment(original_metadata_file, augmented_metadata_file):
         category = row['category']
         esc10 = row['esc10']
         take = row['take']
-        if category in ['breathing', 'cat', 'mouse_click', 'coughing']:
+        if category in ['airplane']:
             augmented_files.extend(augment_audio(file_path, target, fold, category, esc10, src_file=row['src_file'], take=take))  
 
     update_metadata(augmented_metadata_file, augmented_files) 
@@ -81,5 +81,10 @@ def load_preprocessed_aug_data():
     X = load('X_features_aug.joblib')
     y = load('y_labels_aug.joblib')
     le = load('label_encoder_aug.joblib')
+    return X, y, le
+def load_preprocessed_final_data():
+    X = load('X_final.joblib')
+    y = load('y_final.joblib')
+    le = load('label_encoder.joblib')
     return X, y, le
 # apply_augment(original_metadata_file, augmented_metadata_file)
