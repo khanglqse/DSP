@@ -73,14 +73,14 @@ def pre_processing():
     # Chia dữ liệu thành X và y
     X = np.array(combined_df.iloc[:, :-1])
     y = np.array(combined_df['class_label'])
-
+    
     # Chuyển đổi nhãn
     le = LabelEncoder()
     y = le.fit_transform(y)
 
-    dump(X, 'X_final.joblib')
-    dump(y, 'y_final.joblib')
-    dump(le, 'label_encoder.joblib')
+    # dump(X, 'X_final_v2.joblib')
+    # dump(y, 'y_final_v2.joblib')
+    # dump(le, 'label_encoder_v2.joblib')
     return X, y, le
   
 
@@ -104,38 +104,20 @@ def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
         text.set_fontsize(8)  # Change annotation font size
 
     plt.show()
-def custom_resampling(X, y, le):
-    # Lấy chỉ số của các lớp
-    airplane_index = le.transform(['airplane'])[0]
-    brushing_teeth_index = le.transform(['brushing_teeth'])[0]
-    
-    # Định nghĩa chiến lược lấy mẫu với chỉ số lớp
-    # sampling_strategy = {
-    #     airplane_index: int(1.1 * sum(y == airplane_index)),
-    #     brushing_teeth_index: int(1.1 * sum(y == brushing_teeth_index))
-    # }
-    
-    ros = RandomOverSampler(random_state=42)
-    X_resampled, y_resampled = ros.fit_resample(X, y)
-    return X_resampled, y_resampled
 
 def random_forest():
     # X, y, le = pre_processing()
     X, y, le = utilities.load_preprocessed_data()
     
-    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
     X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
     
-    # Scaling
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
     
-    # Define the model and hyperparameters for tuning
     model = RandomForestClassifier(random_state=42)
     param_grid = {
         'n_estimators': [50, 100, 200],
@@ -143,40 +125,36 @@ def random_forest():
         'min_samples_split': [2, 5, 10]
     }
     
-    # Step 3: Tune and train the model with the validation set using GridSearchCV
     grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1_macro', n_jobs=-1)
     grid_search.fit(X_train, y_train)
     
-    # Select the best model
     best_model = grid_search.best_estimator_
 
-    # Step 4: Evaluate on the validation set to check performance
     y_val_pred = best_model.predict(X_val)
     print("Validation Set Evaluation")
     print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
     print(classification_report(y_val, y_val_pred, target_names=le.classes_))
     show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
     
-    # Step 5: Final evaluation on the test set
-    y_test_pred = best_model.predict(X_test)
-    print("Test Set Evaluation")
-    print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
-    print(classification_report(y_test, y_test_pred, target_names=le.classes_))
-    show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
+    # # Step 5: Final evaluation on the test set
+    # y_test_pred = best_model.predict(X_test)
+    # print("Test Set Evaluation")
+    # print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
+    # print(classification_report(y_test, y_test_pred, target_names=le.classes_))
+    # show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
 
 
 def SVM():
+    # X, y, le = utilities.load_preprocessed_final_data()
     X, y, le = utilities.load_preprocessed_final_data()
-
   
-    X_resampled, y_resampled = custom_resampling(X, y, le)
-    # ros = RandomOverSampler(random_state=42)
-    # X_resampled, y_resampled = ros.fit_resample(X_combined, y_combined)
+    ros = RandomOverSampler(random_state=42)
+    X_resampled, y_resampled = ros.fit_resample(X, y)
     # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
     X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
     # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
-    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
     
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
@@ -185,9 +163,9 @@ def SVM():
 
     model = SVC(random_state=42)
     param_grid = {
-        'C': [0.1, 1, 10, 100, 1000],
-        'kernel': ['linear', 'rbf', 'poly'],
-        'gamma': ['scale', 'auto']
+        'C': [1000],
+        'kernel': ['rbf'],
+        'gamma': ['scale']
     }
 
     grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
@@ -242,6 +220,6 @@ def SVM1():
     show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
 
 
-SVM()
-# random_forest()
+# SVM()
+random_forest()
 # pre_processing()
