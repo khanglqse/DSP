@@ -18,7 +18,6 @@ metadata_path = './meta/metadata.csv'
 augmented_metadata_path = './meta/augmented_metadata.csv'
 audio_folder = './audio'
 augmented_audio_folder = './augmented_audio'
-
 metadata = pd.read_csv(metadata_path)
 augmented_metadata = pd.read_csv(augmented_metadata_path)
 
@@ -62,7 +61,7 @@ def pre_processing():
     features_df = features_df.dropna()
 
     augmented_features_df = pd.DataFrame(augmented_features, columns=[f'feature_{i}' for i in range(augmented_features[0].shape[0])])
-    augmented_features_df['class_label'] = augmented_metadata['category']  # Sử dụng category từ augmented_metadata
+    augmented_features_df['class_label'] = augmented_metadata['category'] 
     augmented_features_df = augmented_features_df.dropna()
 
     combined_df = pd.concat([features_df, augmented_features_df], ignore_index=True)
@@ -139,35 +138,36 @@ def random_forest():
 
 
 def SVM():
+    # Load preprocessed data
     X, y, le = utilities.load_preprocessed_final_data()
-  
-    # Áp dụng RandomOverSampler để cân bằng dữ liệu
+    
     ros = RandomOverSampler(random_state=42)
     X_resampled, y_resampled = ros.fit_resample(X, y)
     
-    # Chia dữ liệu thành tập huấn luyện và tập kiểm thử
     X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
     
-    # Chuẩn hóa dữ liệu
     scaler = StandardScaler()
-    X_train_val = scaler.fit_transform(X_train_val)
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
     
-    # Khởi tạo mô hình SVM với các tham số tùy chọn
     model = SVC(C=100, kernel='rbf', gamma='scale', random_state=42)
     
-    # Áp dụng K-fold cross-validation với 5 fold
     kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv_scores = cross_val_score(model, X_train_val, y_train_val, cv=kfold, scoring='accuracy', n_jobs=-1)
+    cv_scores = cross_val_score(model, X_train, y_train, cv=kfold, scoring='accuracy', n_jobs=-1)
     
     print("K-fold Cross-Validation Accuracy Scores:", cv_scores)
     print("Mean Cross-Validation Accuracy:", np.mean(cv_scores))
     
-    # Huấn luyện mô hình với toàn bộ tập train/validation sau khi đánh giá cross-validation
-    model.fit(X_train_val, y_train_val)
-    dump(model, 'svm_model.joblib')
+    model.fit(X_train, y_train)
     
-    # Đánh giá mô hình trên tập kiểm thử
+    
+    # y_val_pred = model.predict(X_val)
+    # print("Validation Set Evaluation")
+    # print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    # print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    
     y_test_pred = model.predict(X_test)
     print("Test Set Evaluation")
     print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
@@ -186,7 +186,7 @@ def SVM1():
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
 
-    model = SVC(C=1, kernel='rbf', gamma='scale', random_state=42)  # Adjust these values as needed
+    model = SVC(C=1, kernel='rbf', gamma='scale', random_state=42) 
 
     model.fit(X_train, y_train)
 
