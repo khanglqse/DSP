@@ -141,37 +141,34 @@ def random_forest():
 def SVM():
     X, y, le = utilities.load_preprocessed_final_data()
   
+    # Áp dụng RandomOverSampler để cân bằng dữ liệu
     ros = RandomOverSampler(random_state=42)
     X_resampled, y_resampled = ros.fit_resample(X, y)
+    
+    # Chia dữ liệu thành tập huấn luyện và tập kiểm thử
     X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
-    X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
-    
+    # Chuẩn hóa dữ liệu
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
+    X_train_val = scaler.fit_transform(X_train_val)
     X_test = scaler.transform(X_test)
-    X_val = scaler.transform(X_val)
-
-    model = SVC(random_state=42)
-    param_grid = {
-        'C': [100],
-        'kernel': ['rbf'],
-        'gamma': ['scale']
-    }
-
-    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy', n_jobs=-1)
-    grid_search.fit(X_train, y_train)
-    best_model = grid_search.best_estimator_
-    print("Best Hyperparameters: ", grid_search.best_params_)
-    dump(best_model, 'svm_model.joblib')
-    y_val_pred = best_model.predict(X_val) 
-
-    print("Validation Set Evaluation")
-    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
-    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
-    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
     
-    y_test_pred = best_model.predict(X_test)
+    # Khởi tạo mô hình SVM với các tham số tùy chọn
+    model = SVC(C=100, kernel='rbf', gamma='scale', random_state=42)
+    
+    # Áp dụng K-fold cross-validation với 5 fold
+    kfold = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores = cross_val_score(model, X_train_val, y_train_val, cv=kfold, scoring='accuracy', n_jobs=-1)
+    
+    print("K-fold Cross-Validation Accuracy Scores:", cv_scores)
+    print("Mean Cross-Validation Accuracy:", np.mean(cv_scores))
+    
+    # Huấn luyện mô hình với toàn bộ tập train/validation sau khi đánh giá cross-validation
+    model.fit(X_train_val, y_train_val)
+    dump(model, 'svm_model.joblib')
+    
+    # Đánh giá mô hình trên tập kiểm thử
+    y_test_pred = model.predict(X_test)
     print("Test Set Evaluation")
     print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
     print(classification_report(y_test, y_test_pred, target_names=le.classes_))
