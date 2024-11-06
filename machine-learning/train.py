@@ -57,24 +57,19 @@ def pre_processing():
     features = Parallel(n_jobs=-1)(delayed(extract_features)(os.path.join(audio_folder, row['filename'])) for _, row in metadata.iterrows())
     augmented_features = Parallel(n_jobs=-1)(delayed(extract_features)(os.path.join(augmented_audio_folder, row['filename'])) for _, row in augmented_metadata.iterrows())
 
-    # Tạo DataFrame cho dữ liệu gốc
     features_df = pd.DataFrame(features, columns=[f'feature_{i}' for i in range(features[0].shape[0])])
     features_df['class_label'] = metadata['category']
     features_df = features_df.dropna()
 
-    # Tạo DataFrame cho dữ liệu tăng cường
     augmented_features_df = pd.DataFrame(augmented_features, columns=[f'feature_{i}' for i in range(augmented_features[0].shape[0])])
     augmented_features_df['class_label'] = augmented_metadata['category']  # Sử dụng category từ augmented_metadata
     augmented_features_df = augmented_features_df.dropna()
 
-    # Kết hợp hai DataFrame
     combined_df = pd.concat([features_df, augmented_features_df], ignore_index=True)
 
-    # Chia dữ liệu thành X và y
     X = np.array(combined_df.iloc[:, :-1])
     y = np.array(combined_df['class_label'])
     
-    # Chuyển đổi nhãn
     le = LabelEncoder()
     y = le.fit_transform(y)
 
@@ -88,20 +83,19 @@ def pre_processing():
 def show_confusion_matrix(y_true, y_pred, class_names, normalize=False):
     conf_matrix = confusion_matrix(y_true, y_pred, normalize='true' if normalize else None)
     
-    plt.figure(figsize=(12, 10))  # Increase figure size
+    plt.figure(figsize=(12, 10))
     sns.heatmap(conf_matrix, annot=True, fmt='.2f' if normalize else 'd', cmap='Blues', 
                 xticklabels=class_names, yticklabels=class_names, 
-                cbar_kws={'label': 'Frequency'})  # Add color bar label
+                cbar_kws={'label': 'Frequency'})
     
-    plt.ylabel('Actual', fontsize=8)  # Increase font size for labels
-    plt.xlabel('Predicted', fontsize=8)  # Increase font size for labels
-    plt.title('Confusion Matrix', fontsize=8)  # Increase font size for title
-    plt.xticks(fontsize=8)  # Increase font size for x-axis ticks
-    plt.yticks(fontsize=8)  # Increase font size for y-axis ticks
+    plt.ylabel('Actual', fontsize=8)
+    plt.xlabel('Predicted', fontsize=8)
+    plt.title('Confusion Matrix', fontsize=8)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
     
-    # Adjust annotation font size
     for text in plt.gca().texts:
-        text.set_fontsize(8)  # Change annotation font size
+        text.set_fontsize(8)  
 
     plt.show()
 
@@ -145,15 +139,12 @@ def random_forest():
 
 
 def SVM():
-    # X, y, le = utilities.load_preprocessed_final_data()
     X, y, le = utilities.load_preprocessed_final_data()
   
     ros = RandomOverSampler(random_state=42)
     X_resampled, y_resampled = ros.fit_resample(X, y)
-    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
     X_train_val, X_test, y_train_val, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
-    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.25, random_state=42)
     
     scaler = StandardScaler()
@@ -163,7 +154,7 @@ def SVM():
 
     model = SVC(random_state=42)
     param_grid = {
-        'C': [1000],
+        'C': [100],
         'kernel': ['rbf'],
         'gamma': ['scale']
     }
@@ -172,54 +163,44 @@ def SVM():
     grid_search.fit(X_train, y_train)
     best_model = grid_search.best_estimator_
     print("Best Hyperparameters: ", grid_search.best_params_)
-
+    dump(best_model, 'svm_model.joblib')
     y_val_pred = best_model.predict(X_val) 
 
-    # print("Validation Set Evaluation")
-    # print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
-    # print(classification_report(y_val, y_val_pred, target_names=le.classes_))
-    # show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
+    print("Validation Set Evaluation")
+    print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
+    print(classification_report(y_val, y_val_pred, target_names=le.classes_))
+    show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
     
-    # Step 5: Final evaluation on the test set
     y_test_pred = best_model.predict(X_test)
     print("Test Set Evaluation")
     print(f"Test Accuracy: {accuracy_score(y_test, y_test_pred)}")
     print(classification_report(y_test, y_test_pred, target_names=le.classes_))
     show_confusion_matrix(y_test, y_test_pred, le.classes_, normalize=True)
 
-# pre_processing()
 def SVM1():
-    # Load preprocessed data
     X, y, le = utilities.load_preprocessed_data()
     
-    # Step 1: Split into training+validation and test sets (80% training+validation, 20% test)
     X_train_val, X_test, y_train_val, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Step 2: Split training+validation set into separate training and validation sets (75% train, 25% validation)
     X_train, X_val, y_train, y_val = train_test_split(X_train_val, y_train_val, test_size=0.2, random_state=42)
     
-    # Standardize the features
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
 
-    # Initialize SVM model with manually set hyperparameters
     model = SVC(C=1, kernel='rbf', gamma='scale', random_state=42)  # Adjust these values as needed
 
-    # Fit the model
     model.fit(X_train, y_train)
 
-    # Predict on validation set
     y_val_pred = model.predict(X_val)
 
-    # Evaluate on the validation set
     print("Validation Set Evaluation")
     print(f"Validation Accuracy: {accuracy_score(y_val, y_val_pred)}")
     print(classification_report(y_val, y_val_pred, target_names=le.classes_))
     show_confusion_matrix(y_val, y_val_pred, le.classes_, normalize=True)
 
 
-# SVM()
-random_forest()
+SVM()
+# random_forest()
 # pre_processing()
